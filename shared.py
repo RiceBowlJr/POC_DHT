@@ -1,3 +1,74 @@
+#!/usr/bin/python
+
+import sys
+
+from twisted.internet import reactor, protocol
+from twisted.internet.protocol import Protocol, ServerFactory
+
+
+class server(Protocol):
+
+	def connectionMade(self):
+	# Ajoutelenouveauclientdanslal i s t es e l f . factory . clients
+		#ajoute le client à la liste
+		self.factory.clients.append(self)
+		#message (gentil) de connexion
+		self.transport.write("Tu es connecté ma couille\r\n")
+
+
+	def connectionLost(self,reason):
+	# Retirelenouveauclientdelalistese l f . factory . clients
+		#supprime le client de la liste
+		self.factory.clients.remove(self)
+
+	def dataReceived(self,data):
+	# Transfertladatasurchaqueclients
+	# On peutcontacterunclientautraversdesasockets e l f . transport
+		#on récupère la ligne et on l'affiche sur le serveur.
+		line = data.rstrip("\r\n")
+		print line
+		#On parcourt tous les clients de la liste
+		for c in self.factory.clients:
+			#Si le client n'est pas lui même alors on affiche le message (évite l'echo)
+			if not self == c:
+				c.messsage(line)
+			#Quand un client écrit QUIT alors la connexion est perdue
+			elif line == "QUIT":
+				self.transport.loseConnection()
+
+	#création d'une fonction qui écrit chez le client
+	def messsage(self, line):
+		self.transport.write(line+'\n')
+
+
+
+
+
+def main():
+	if not len(sys.argv) == 2:
+		print('Usage: ' + sys.argv[0] + ' <tcp server port>')
+		sys.exit(1)
+	try:
+		tcpPort = int(sys.argv[1])
+	except ValueError:
+		print(str(sys.argv[1]) + ' must be an integer.')
+		sys.exit(1)
+	
+	#création serveur vide
+	factory = protocol.ServerFactory()
+	#création tableau client
+	factory.clients = []
+	#utilisation de notre serveur
+	factory.protocol=server
+
+	#spécification du port d'écoute et du serveur + lancer le moteur
+	reactor.listenTCP(tcpPort,factory)
+	reactor.run()
+
+
+if __name__ == '__main__':
+	main()
+
 #! /usr/bin/python
 
 # Written by Vincent Autefage
@@ -77,26 +148,31 @@ class FileShare():
 		gprint('Stopping network daemon...')
 		self.clean()
 		reactor.stop()
+		self.transport.loseConnection()
 
 	def errcallback(orself, failure): # Genereic error callback handler
 		gprint('An error occurred: ' + failure.getErrorMessage())
 
 	def search(self, keyword): # Retreives DHT keys similar to <keyword>
 		gprint('Searching for : ' + str(keyword))
-		pass
 		h = hashlib.sha1()
 		h.update(keyword)
-		key = self.node.iterativeFindValue(key)
+		key = h.digest()
+		df = self.node.iterativeFindValue(key)
 		df.addErrback(self.errcallback)
-		def ok(result):
-			if isintance(result, dict):
-				gprint(keyword + " found.")
-			else:
-				gprint(keyword + " not found.")
+		def ok(result) :
+			if isinstance(result,dict):
+				gprint (keyword + " found . ")
+			else :
+				gprint ("Cannotfind" + keyword)
 		df.addCallback(ok)
+
+
+
 	
 	def publish(self, path): # Publishes new DHT entries from the files located in the directory <path>
 		files = list()
+		#cmp = 1
 		if not os.path.exists(path):
 			gprint(str(path) + ' does not exist')
 			return
@@ -108,20 +184,38 @@ class FileShare():
 				files.append(entry)
 		files.sort()
 		def publishNextFile(result=None):
-			pass
-			# ----
-			# TODO
-			# ----
+			filename = files.pop()
+			h = hashlib.sha1()
+			h.update(filename)
+			key = h.digest()
+			df = self.node.iterativeStore(key,self.node.id)
+			self.files.append(filename)
+			if files:
+				 #cmp = cmp+1
+				df.addCallback(publishNextFile)
+				df.addErrback(self.errcallback)
+			else:
+				gprint("number of file :")
+				return
 		publishNextFile()
 	
 	def clean(self): # Deletes own DHT entries
+		#cmp = 1
 		gprint('Cleaning DHT entries of ' + str(self.factory.sharePath))
 		self.factory.sharePath = '.'
 		def cleanNextFile(result=None):
-			pass
-			# ----
-			# TODO
-			# ----
+			filename = self.files.pop()
+			h = hashlib.sha1()
+			h.update(filename)
+			key = h.digest()
+			df = self.node.iterativeDelete(key)
+			if self.files:
+				#cmp = cmp+1
+				df.addCallback(cleanNextFile)
+				df.addErrback(self.errcallback)
+			else:
+				gprint("number of file deleted :")
+				return
 		cleanNextFile()
 
 	def download(self, filename): # Downloads a file from a node of the DHT
@@ -205,6 +299,8 @@ class DHTCom(Protocol):
 			share.publish(args[0])
 		elif command == 'clean':
 			share.clean()
+		elif command == 'help': # QUESTION 11 : creation de la commande help
+			gprint("please enter commands halt,check,search,update,download,publish,clean\r\n") 
 		else:
 			gprint(str(command) + " is unknown")
 		
@@ -218,7 +314,7 @@ class DHTCom(Protocol):
 
 if __name__ == '__main__':
 	if len(sys.argv) < 3:
-		print('Usage: ' + sys.argv[0] + ' <remote tcp server> <udp port> [<boostrap node ip>  <bootstrap node port>]')
+		print('Usage: ' + sys.argv[0] + ' <remote tcp server> <udp port> [<boostrap node ip><bootstrap node port>]')
 		sys.exit(1)
 	try:
 		tcpPort = int(sys.argv[1])
