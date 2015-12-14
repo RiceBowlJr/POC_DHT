@@ -85,14 +85,15 @@ class FileShare():
 		gprint('Searching for : ' + str(keyword))
 		pass
 		h = hashlib.sha1()
-			h.update(keyword)
-			key = self.node.iterativeFindValue(key)
-			df.addErrback(self.errcallback)
-			def ok(result):
-				if isintance(result, dict):
-					gprint(keyword + " found.")
-				else:
-					gprint(keyword + " not found.")
+		h.update(keyword)
+		key = self.node.iterativeFindValue(key)
+		df.addErrback(self.errcallback)
+		def ok(result):
+			if isintance(result, dict):
+				gprint(keyword + " found.")
+			else:
+				gprint(keyword + " not found.")
+		df.addCallback(ok)
 	
 	def publish(self, path): # Publishes new DHT entries from the files located in the directory <path>
 		files = list()
